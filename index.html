@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dijkstra vs Bellman-Ford 동작 시각화</title>
+<style>
+  :root { --blue:#2563eb; --navy:#1e3a8a; --orange:#ea580c; --red:#dc2626; --green:#16a34a; --gray:#9ca3af;
+          --ink:#111827; --muted:#6b7280; --line:#d1d5db; --bg:#f8fafc; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: "Pretendard","Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif; color:var(--ink); background:var(--bg); }
+  header { background:var(--navy); color:#fff; padding:18px 24px; }
+  header h1 { margin:0; font-size:22px; }
+  header p { margin:4px 0 0; color:#cadcfc; font-size:14px; }
+  main { max-width:1280px; margin:0 auto; padding:16px; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; background:#fff; border:1px solid var(--line);
+         border-radius:10px; padding:10px 12px; margin-bottom:14px; position:sticky; top:0; z-index:5; }
+  .bar button, .bar select { font:inherit; font-size:14px; padding:6px 12px; border:1px solid var(--line); border-radius:8px;
+         background:#fff; cursor:pointer; }
+  .bar button.primary { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .bar button:disabled { opacity:.4; cursor:default; }
+  .bar .step { margin-left:auto; font-size:14px; color:var(--muted); }
+  .bar input[type=range] { width:180px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:900px) { .grid { grid-template-columns:1fr; } }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+  .panel h2 { margin:0 0 2px; font-size:18px; }
+  .panel.dij h2 { color:var(--blue); } .panel.bf h2 { color:var(--orange); }
+  .sub { font-size:13px; color:var(--muted); margin-bottom:6px; }
+  .counters { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0; }
+  .chip { font-size:13px; padding:3px 10px; border-radius:999px; background:#eef2ff; }
+  .chip.done { background:#dcfce7; color:#166534; font-weight:bold; }
+  .chip.warn { background:#fee2e2; color:#991b1b; font-weight:bold; }
+  svg { width:100%; height:auto; display:block; }
+  table.dist { border-collapse:collapse; width:100%; font-size:14px; margin-top:4px; }
+  table.dist th, table.dist td { border:1px solid var(--line); padding:4px 6px; text-align:center; }
+  table.dist th { background:#f3f4f6; }
+  td.changed { background:#fed7aa; font-weight:bold; }
+  tr.cur td { background:#bfdbfe; }
+  .msg { margin-top:8px; border:1px solid var(--line); background:#f9fafb; border-radius:8px; padding:8px 10px; font-size:14.5px; line-height:1.55; min-height:96px; }
+  .msg b.what { color:var(--blue); } .msg b.why { color:var(--orange); }
+  .extra { font-size:13px; color:#7c2d12; margin-top:4px; min-height:18px; }
+  .legend { font-size:13px; color:var(--muted); background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:6px 10px; margin-bottom:14px; line-height:1.7; }
+  .sw { display:inline-block; width:22px; height:4px; vertical-align:middle; margin:0 4px 0 10px; border-radius:2px; }
+  details { background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px 12px; margin-top:14px; }
+  summary { cursor:pointer; font-weight:bold; }
+  .edges { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+  .edges label { font-size:14px; border:1px solid var(--line); border-radius:8px; padding:4px 8px; background:#f9fafb; }
+  .edges input { width:56px; font:inherit; }
+  .note { font-size:13px; color:var(--muted); }
+  footer { text-align:center; font-size:12px; color:var(--muted); padding:20px; }
+  .bflog { font-size:12.5px; margin-top:4px; max-height:120px; overflow:auto; border:1px solid var(--line); border-radius:6px; }
+  .bflog table { border-collapse:collapse; width:100%; }
+  .bflog td { border-bottom:1px solid #eee; padding:2px 6px; }
+  .bflog tr.now td { background:#ffedd5; font-weight:bold; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dijkstra vs Bellman-Ford — 최단 경로 알고리즘 동작 시각화</h1>
+  <p>같은 그래프에서 두 알고리즘을 한 단계씩 동시에 실행합니다. 단계마다 “무엇을 했고 왜 그렇게 했는지”가 표시됩니다.</p>
+</header>
+<main>
+  <div class="bar">
+    <select id="preset" aria-label="예제 선택">
+      <option value="base">예제 1: 기본 그래프 (양수 가중치)</option>
+      <option value="neg">예제 2: 음수 간선 (Dijkstra 실패)</option>
+      <option value="cycle">예제 3: 음수 사이클 (Bellman-Ford 탐지)</option>
+    </select>
+    <button id="first">⏮ 처음</button>
+    <button id="prev">◀ 이전</button>
+    <button id="play" class="primary">▶ 재생</button>
+    <button id="next">다음 ▶</button>
+    <button id="last">끝 ⏭</button>
+    <label class="note">속도 <input id="speed" type="range" min="200" max="2500" step="100" value="1200"></label>
+    <span class="step" id="stepLabel"></span>
+  </div>
+
+  <div class="legend">
+    간선:<span class="sw" style="background:#2563eb"></span>현재 최단 경로 트리(prev)
+    <span class="sw" style="background:#ea580c"></span>지금 완화하여 갱신
+    <span class="sw" style="background:#6b7280"></span>지금 검사했지만 변화 없음
+    <span class="sw" style="background:#dc2626"></span>무시됨 / 음수 사이클
+    &nbsp;|&nbsp; 정점: <b style="color:#1e3a8a">진한 파랑</b>=지금 처리 중, <b style="color:#2563eb">연한 파랑</b>=확정,
+    <b style="color:#ea580c">연한 주황</b>=거리를 아는 후보, 흰색=미도달 &nbsp;|&nbsp; 노란 상자=현재 dist, 표의 주황 칸=방금 바뀐 값
+    &nbsp;|&nbsp; 키보드: ← → 이동, Space 재생
+  </div>
+
+  <div class="grid">
+    <section class="panel dij">
+      <h2>Dijkstra</h2>
+      <div class="sub">탐욕: dist가 가장 작은 정점을 꺼내 확정 → 그 정점의 간선만 완화 (우선순위 큐)</div>
+      <div class="counters" id="dijCnt"></div>
+      <svg id="dijSvg" viewBox="0 0 560 300" role="img" aria-label="Dijkstra 그래프"></svg>
+      <div class="extra" id="dijExtra"></div>
+      <table class="dist" id="dijTbl"></table>
+      <div class="msg" id="dijMsg"></div>
+    </section>
+    <section class="panel bf">
+      <h2>Bellman-Ford</h2>
+      <div class="sub">동적 계획법: 모든 간선을 정해진 순서로 완화하는 라운드를 최대 V−1번 반복</div>
+      <div class="counters" id="bfCnt"></div>
+      <svg id="bfSvg" viewBox="0 0 560 300" role="img" aria-label="Bellman-Ford 그래프"></svg>
+      <div class="extra" id="bfExtra"></div>
+      <table class="dist" id="bfTbl"></table>
+      <div class="msg" id="bfMsg"></div>
+    </section>
+  </div>
+
+  <details>
+    <summary>간선 가중치 바꿔 보기 (직접 실험)</summary>
+    <p class="note">가중치를 바꾸고 “적용”을 누르면 두 알고리즘을 처음부터 다시 실행합니다. 간선 순서(번호)는 Bellman-Ford가 매 라운드 간선을 처리하는 순서입니다. 음수를 넣으면 Dijkstra가 틀리는 경우를 직접 만들어 볼 수 있습니다.</p>
+    <div class="edges" id="edgeInputs"></div>
+    <button id="apply">적용</button> <button id="reset">원래 가중치로</button>
+  </details>
+
+  <details>
+    <summary>복잡도 요약</summary>
+    <table class="dist" style="margin:8px 0">
+      <tr><th></th><th>Dijkstra (이진 힙)</th><th>Bellman-Ford</th></tr>
+      <tr><td>시간</td><td>O((V+E) log V)</td><td>O(V·E)</td></tr>
+      <tr><td>공간</td><td>O(V+E)</td><td>O(V+E)</td></tr>
+      <tr><td>음수 간선</td><td>불가</td><td>가능</td></tr>
+      <tr><td>음수 사이클 탐지</td><td>불가</td><td>가능</td></tr>
+    </table>
+    <p class="note">Dijkstra는 각 정점을 한 번만 꺼내 확정하므로 각 간선을 한 번씩만 본다. Bellman-Ford는 어떤 값이 최종값인지 알 수 없어 라운드마다 모든 간선을 다시 본다. 위 화면의 “완화 시도” 횟수 차이가 바로 이 차이다.</p>
+  </details>
+</main>
+<footer>알고리즘 과제 · 주제 A · Dijkstra vs Bellman-Ford 시각화</footer>
+
+<script>
+const INF = Infinity;
+const fmt = d => d === INF ? "∞" : String(d);
+
+const PRESETS = {
+  base: {
+    nodes: { S:[50,150], A:[210,50], B:[210,250], C:[370,50], D:[370,250], E:[520,150] },
+    edges: [["A","C",5],["B","A",1],["B","C",8],["B","D",10],["C","D",2],["C","E",6],["D","E",2],["S","A",4],["S","B",2]],
+  },
+  neg: {
+    nodes: { S:[80,150], A:[330,60], B:[330,240] },
+    edges: [["S","A",2],["S","B",5],["B","A",-4]],
+  },
+  cycle: {
+    nodes: { S:[60,150], A:[230,150], B:[420,60], C:[420,240] },
+    edges: [["S","A",1],["A","B",1],["B","C",-3],["C","A",1]],
+  },
+};
+let presetKey = "base";
+let G = JSON.parse(JSON.stringify(PRESETS.base));
+const SRC = "S";
+
+// ---------------- algorithms -> step lists ----------------
+function snapshot(o) { return JSON.parse(JSON.stringify(o, (k, v) => v === INF ? "INF" : v), (k, v) => v === "INF" ? INF : v); }
+
+function runDijkstra(G) {
+  const V = Object.keys(G.nodes); const steps = [];
+  const dist = {}, prev = {}; V.forEach(v => { dist[v] = INF; prev[v] = null; });
+  const done = []; let pq = [[0, SRC]]; dist[SRC] = 0; let relax = 0, upd = 0;
+  const push = (o) => steps.push(Object.assign({ dist: snapshot(dist), prev: snapshot(prev), done: [...done],
+      pq: pq.filter(([d, v]) => !done.includes(v) && d === dist[v]).sort((a, b) => a[0] - b[0] || a[1].localeCompare(b[1])),
+      relax, upd }, o));
+  push({ what: `dist[${SRC}]=0, 나머지는 ∞. 큐에 (0, ${SRC})를 넣었다.`, why: "출발점까지의 거리는 0이고, 아직 어떤 간선도 보지 않았으므로 다른 정점까지 가는 방법을 모른다(∞)." });
+  while (pq.length) {
+    pq.sort((a, b) => a[0] - b[0] || a[1].localeCompare(b[1]));
+    const [d, u] = pq.shift();
+    if (done.includes(u) || d > dist[u]) continue; // stale entry
+    done.push(u);
+    push({ cur: u, what: `큐에서 (${d}, ${u})를 꺼내 ${u}를 확정했다 (dist[${u}]=${d}).`,
+      why: `남은 후보 중 dist가 가장 작은 정점이 ${u}다. 간선 가중치가 0 이상이면 더 큰 값에서 출발해 돌아오는 경로는 ${d}보다 짧을 수 없으므로 지금 확정해도 안전하다.` });
+    for (const [a, v, w] of G.edges) {
+      if (a !== u) continue;
+      relax++;
+      const nd = d + w, old = dist[v];
+      if (done.includes(v)) {
+        const bad = nd < old;
+        push({ cur: u, edge: [u, v], kind: "ignored", warn: bad,
+          what: `${u}→${v} (w=${w}) 검사: ${v}는 이미 확정 → 건너뜀.`,
+          why: bad ? `${d}+(${w})=${nd} < ${fmt(old)}로 더 짧은 길인데도, Dijkstra는 확정된 정점을 다시 고치지 않는다. 음수 간선 때문에 “확정”의 전제가 깨져 결과가 틀리는 순간이다.`
+                   : "확정된 정점은 더 짧아질 수 없으므로 다시 볼 필요가 없다." });
+      } else if (nd < old) {
+        dist[v] = nd; prev[v] = u; upd++; pq.push([nd, v]);
+        push({ cur: u, edge: [u, v], kind: "upd", changed: v,
+          what: `${u}→${v} 완화: ${d}+${w}=${nd} < ${fmt(old)} → dist[${v}]=${nd}, prev[${v}]=${u}.`,
+          why: old === INF ? `${v}에 도달하는 첫 경로를 찾았다. 아직 최단인지 모르므로 “후보”로 큐에 넣는다.`
+                           : `기존에 알던 경로(${old})보다 ${u}를 거치는 경로(${nd})가 더 짧아서 갱신했다.` });
+      } else {
+        push({ cur: u, edge: [u, v], kind: "no",
+          what: `${u}→${v} 검사: ${d}+${w}=${nd} ≥ ${fmt(old)} → 변화 없음.`,
+          why: `이미 알고 있는 ${v}까지의 경로가 더 짧거나 같다.` });
+      }
+    }
+  }
+  const neg = G.edges.some(e => e[2] < 0);
+  push({ final: true, what: `큐가 비어 종료. 총 완화 시도 ${relax}회 (간선마다 최대 1번), 갱신 ${upd}회.`,
+    why: neg ? "그래프에 음수 간선이 있어 Dijkstra의 결과는 정답이 아닐 수 있다. 오른쪽 Bellman-Ford 결과와 비교해 보자."
+             : "모든 정점이 확정되었다. 표의 prev를 거꾸로 따라가면 각 정점까지의 최단 경로를 얻는다." });
+  return steps;
+}
+
+function runBF(G) {
+  const V = Object.keys(G.nodes); const steps = [];
+  const dist = {}, prev = {}; V.forEach(v => { dist[v] = INF; prev[v] = null; });
+  dist[SRC] = 0; let relax = 0, upd = 0, round = 0, negCycle = false, early = false;
+  const push = (o) => steps.push(Object.assign({ dist: snapshot(dist), prev: snapshot(prev), relax, upd, round }, o));
+  push({ what: `dist[${SRC}]=0, 나머지 ∞. 간선 ${G.edges.length}개의 처리 순서를 고정했다.`,
+    why: `매 라운드 간선을 이 순서대로 모두 본다. 최단 경로는 간선을 최대 V−1=${V.length - 1}개 쓰므로 최대 ${V.length - 1} 라운드면 충분하다.` });
+  for (round = 1; round <= V.length - 1; round++) {
+    let ch = 0;
+    G.edges.forEach(([u, v, w], i) => {
+      relax++;
+      if (dist[u] === INF) {
+        push({ edge: [u, v], idx: i, kind: "skip", what: `Round ${round}, 간선 ${i + 1}: ${u}→${v} 건너뜀 (dist[${u}]=∞).`,
+          why: `${u}에 아직 도달하지 못했으므로 ${u}를 거치는 경로도 아직 없다.` });
+      } else if (dist[u] + w < dist[v]) {
+        const old = dist[v]; dist[v] = dist[u] + w; prev[v] = u; upd++; ch++;
+        push({ edge: [u, v], idx: i, kind: "upd", changed: v,
+          what: `Round ${round}, 간선 ${i + 1}: ${u}→${v} 완화 ${dist[u]}+(${w})=${dist[v]} < ${fmt(old)} → dist[${v}]=${dist[v]}.`,
+          why: old === INF ? `${v}까지 가는 첫 경로를 찾았다.` : `${u}를 거치는 길이 기존(${old})보다 짧다. 앞 라운드나 앞 간선에서 바뀐 값이 여기까지 전파된 것이다.` });
+      } else {
+        push({ edge: [u, v], idx: i, kind: "no", what: `Round ${round}, 간선 ${i + 1}: ${u}→${v} 검사 ${dist[u]}+(${w})=${dist[u] + w} ≥ ${fmt(dist[v])} → 변화 없음.`,
+          why: "현재 알려진 경로가 더 짧거나 같다." });
+      }
+    });
+    push({ roundEnd: true, what: `Round ${round} 종료: 갱신 ${ch}회.`,
+      why: ch ? `값이 바뀌었으므로 그 효과가 다음 라운드에 다른 정점으로 퍼질 수 있다. 계속 진행한다.`
+              : `한 라운드 동안 아무것도 바뀌지 않았다. 같은 검사를 반복해도 결과가 같으므로 조기 종료한다. 이 라운드 자체가 “더 완화되는 간선이 없음”을 보였으므로 음수 사이클도 없다.` });
+    if (!ch) { early = true; break; }
+  }
+  if (!early) {
+    round = V.length;
+    for (const [u, v, w] of G.edges) {
+      relax++;
+      if (dist[u] !== INF && dist[u] + w < dist[v]) {
+        negCycle = true;
+        push({ edge: [u, v], kind: "neg", check: true, what: `음수 사이클 검사: ${u}→${v}에서 ${dist[u]}+(${w})=${dist[u] + w} < ${dist[v]} → 아직도 줄어든다!`,
+          why: `최단 경로라면 V−1 라운드 안에 값이 고정되어야 한다. 그런데도 줄어든다는 것은 돌 때마다 거리가 줄어드는 음수 사이클이 있다는 뜻이다.` });
+        break;
+      }
+    }
+    if (!negCycle) push({ check: true, what: "음수 사이클 검사: 더 완화되는 간선이 없다.", why: "V−1 라운드 후 값이 고정되었으므로 음수 사이클이 없다." });
+  }
+  push({ final: true, negCycle, what: negCycle ? `종료: 음수 사이클 존재를 보고한다. (총 완화 시도 ${relax}회)` : `종료: 총 완화 시도 ${relax}회, 실제 갱신 ${upd}회.`,
+    why: negCycle ? "음수 사이클이 있으면 “최단 거리”가 정의되지 않는다(계속 돌면 −∞). Dijkstra는 이를 알아챌 장치가 없다."
+                  : "Dijkstra와 같은 결과인지 왼쪽 표와 비교해 보자. 같은 답을 얻는 데 더 많은 검사가 필요했다." });
+  return steps;
+}
+
+// ---------------- rendering ----------------
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  parent.appendChild(e); return e;
+}
+function drawGraph(svg, st, algo) {
+  svg.innerHTML = "";
+  const defs = el("defs", {}, svg);
+  const colors = { tree: "#2563eb", upd: "#ea580c", no: "#6b7280", skip: "#9ca3af", ignored: "#dc2626", neg: "#dc2626", base: "#9ca3af" };
+  for (const k in colors) {
+    const m = el("marker", { id: `${svg.id}-${k}`, viewBox: "0 0 10 10", refX: "9", refY: "5", markerWidth: "7", markerHeight: "7", orient: "auto-start-reverse" }, defs);
+    el("path", { d: "M0,0 L10,5 L0,10 z", fill: colors[k] }, m);
+  }
+  const R = 22;
+  const tree = new Set(Object.entries(st.prev).filter(([v, p]) => p).map(([v, p]) => p + ">" + v));
+  for (const [u, v, w] of G.edges) {
+    const [x1, y1] = G.nodes[u], [x2, y2] = G.nodes[v];
+    const L = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / L, uy = (y2 - y1) / L;
+    let kind = tree.has(u + ">" + v) ? "tree" : "base";
+    const active = st.edge && st.edge[0] === u && st.edge[1] === v;
+    if (active) kind = st.kind;
+    const width = active ? 5 : kind === "tree" ? 3.5 : 1.8;
+    el("line", { x1: x1 + ux * R, y1: y1 + uy * R, x2: x2 - ux * (R + 3), y2: y2 - uy * (R + 3), stroke: colors[kind], "stroke-width": width,
+      "stroke-dasharray": (kind === "ignored" || kind === "skip") ? "7 5" : "none", "marker-end": `url(#${svg.id}-${kind})` }, svg);
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    el("rect", { x: mx - 15, y: my - 11, width: 30, height: 22, rx: 5, fill: "#fff" }, svg);
+    el("text", { x: mx, y: my + 5, "text-anchor": "middle", "font-size": 15, "font-weight": "bold", fill: kind === "base" ? "#374151" : colors[kind] }, svg, w);
+  }
+  for (const v in G.nodes) {
+    const [x, y] = G.nodes[v];
+    let fill = "#fff", stroke = "#374151", tc = "#111827";
+    const known = st.dist[v] !== INF;
+    if (algo === "dij") {
+      if (st.done.includes(v)) { fill = "#dbeafe"; stroke = "#2563eb"; }
+      else if (known) { fill = "#ffedd5"; stroke = "#ea580c"; }
+      if (st.cur === v) { fill = "#2563eb"; stroke = "#1e3a8a"; tc = "#fff"; }
+    } else {
+      if (v === SRC) { fill = "#dbeafe"; stroke = "#2563eb"; }
+      else if (known) { fill = "#ffedd5"; stroke = "#ea580c"; }
+      if (st.edge && st.edge[0] === v) { fill = "#2563eb"; stroke = "#1e3a8a"; tc = "#fff"; }
+    }
+    if (st.changed === v) stroke = "#ea580c";
+    el("circle", { cx: x, cy: y, r: R, fill, stroke, "stroke-width": st.changed === v ? 4 : 2.5 }, svg);
+    el("text", { x, y: y + 6, "text-anchor": "middle", "font-size": 18, "font-weight": "bold", fill: tc }, svg, v);
+    const by = y < 150 ? y - 44 : y + 26, txt = fmt(st.dist[v]);
+    const bw = Math.max(26, txt.length * 10 + 12);
+    el("rect", { x: x - bw / 2, y: by, width: bw, height: 20, rx: 4, fill: st.changed === v ? "#fed7aa" : "#fef9c3", stroke: "#ca8a04" }, svg);
+    el("text", { x, y: by + 15, "text-anchor": "middle", "font-size": 14, fill: "#111827" }, svg, txt);
+  }
+}
+function drawTable(tbl, st, algo) {
+  const V = Object.keys(G.nodes);
+  let h = `<tr><th>정점</th><th>dist</th><th>prev</th>${algo === "dij" ? "<th>상태</th>" : ""}</tr>`;
+  for (const v of V) {
+    const cls = st.cur === v ? ' class="cur"' : "";
+    const c = st.changed === v ? ' class="changed"' : "";
+    let state = "";
+    if (algo === "dij") state = `<td>${st.done.includes(v) ? "확정" : st.dist[v] !== INF ? "후보" : "미방문"}</td>`;
+    h += `<tr${cls}><td>${v}</td><td${c}>${fmt(st.dist[v])}</td><td${c}>${st.prev[v] || "-"}</td>${state}</tr>`;
+  }
+  tbl.innerHTML = h;
+}
+function render(prefix, steps, i, algo) {
+  const st = steps[Math.min(i, steps.length - 1)];
+  const finished = i >= steps.length - 1;
+  drawGraph(document.getElementById(prefix + "Svg"), st, algo);
+  drawTable(document.getElementById(prefix + "Tbl"), st, algo);
+  document.getElementById(prefix + "Msg").innerHTML =
+    `<b class="what">한 일:</b> ${st.what}<br><b class="why">이유:</b> ${st.why}`;
+  let cnt = `<span class="chip">완화 시도 ${st.relax}회</span><span class="chip">갱신 ${st.upd}회</span>`;
+  if (algo === "bf") cnt = `<span class="chip">Round ${Math.min(st.round, Object.keys(G.nodes).length - 1) || 0}${st.check ? " · 음수 사이클 검사" : ""}</span>` + cnt;
+  if (finished) cnt += `<span class="chip done">완료 (${steps.length - 1}단계)</span>`;
+  if (st.warn) cnt += `<span class="chip warn">⚠ 확정된 값보다 더 짧은 길을 무시함</span>`;
+  if (st.negCycle || st.kind === "neg") cnt += `<span class="chip warn">음수 사이클 탐지</span>`;
+  document.getElementById(prefix + "Cnt").innerHTML = cnt;
+  const ex = document.getElementById(prefix + "Extra");
+  if (algo === "dij") ex.textContent = "우선순위 큐: " + (st.pq.length ? st.pq.map(([d, v]) => `(${d},${v})`).join(", ") : "(비어 있음)");
+  else ex.textContent = "간선 순서: " + G.edges.map(([u, v], k) => (st.idx === k ? `[${k + 1}. ${u}→${v}]` : `${k + 1}. ${u}→${v}`)).join("  ");
+}
+
+// ---------------- controls ----------------
+let dij = [], bf = [], idx = 0, timer = null;
+const total = () => Math.max(dij.length, bf.length);
+function rebuild() {
+  dij = runDijkstra(G); bf = runBF(G);
+  const df = dij[dij.length - 1], bfF = bf[bf.length - 1];
+  const same = Object.keys(G.nodes).every(v => df.dist[v] === bfF.dist[v]);
+  if (!bfF.negCycle) {
+    if (same) bfF.why = `왼쪽 Dijkstra와 결과가 같다. 하지만 같은 답을 얻는 데 완화 시도가 ${bfF.relax}회로, Dijkstra(${df.relax}회)보다 많이 필요했다.`;
+    else {
+      const diff = Object.keys(G.nodes).filter(v => df.dist[v] !== bfF.dist[v]).map(v => `${v}: Dijkstra ${fmt(df.dist[v])} vs Bellman-Ford ${fmt(bfF.dist[v])}`).join(", ");
+      bfF.why = `왼쪽 Dijkstra와 결과가 다르다 (${diff}). 음수 간선이 있을 때는 모든 간선을 반복해서 보는 Bellman-Ford의 값이 정답이다.`;
+      df.why += ` 실제로 Bellman-Ford와 결과가 다르다 (${diff}).`;
+    }
+  }
+  idx = 0; stop(); show(); buildInputs();
+}
+function show() {
+  render("dij", dij, idx, "dij"); render("bf", bf, idx, "bf");
+  document.getElementById("stepLabel").textContent = `단계 ${idx} / ${total() - 1}  (Dijkstra ${dij.length - 1}단계, Bellman-Ford ${bf.length - 1}단계)`;
+  document.getElementById("prev").disabled = document.getElementById("first").disabled = idx === 0;
+  document.getElementById("next").disabled = document.getElementById("last").disabled = idx >= total() - 1;
+}
+function go(n) { idx = Math.max(0, Math.min(total() - 1, n)); show(); if (idx >= total() - 1) stop(); }
+function stop() { clearInterval(timer); timer = null; document.getElementById("play").textContent = "▶ 재생"; }
+function play() {
+  if (timer) return stop();
+  if (idx >= total() - 1) idx = 0;
+  document.getElementById("play").textContent = "⏸ 정지";
+  timer = setInterval(() => go(idx + 1), +document.getElementById("speed").value);
+}
+function buildInputs() {
+  const box = document.getElementById("edgeInputs");
+  box.innerHTML = G.edges.map(([u, v, w], k) => `<label>${k + 1}. ${u}→${v} <input type="number" data-k="${k}" value="${w}"></label>`).join("");
+}
+document.getElementById("first").onclick = () => go(0);
+document.getElementById("prev").onclick = () => go(idx - 1);
+document.getElementById("next").onclick = () => go(idx + 1);
+document.getElementById("last").onclick = () => go(total() - 1);
+document.getElementById("play").onclick = play;
+document.getElementById("speed").oninput = () => { if (timer) { stop(); play(); } };
+document.getElementById("preset").onchange = e => { presetKey = e.target.value; G = JSON.parse(JSON.stringify(PRESETS[presetKey])); rebuild(); };
+document.getElementById("apply").onclick = () => {
+  document.querySelectorAll("#edgeInputs input").forEach(inp => { const v = parseInt(inp.value, 10); if (!isNaN(v)) G.edges[+inp.dataset.k][2] = v; });
+  rebuild();
+};
+document.getElementById("reset").onclick = () => { G = JSON.parse(JSON.stringify(PRESETS[presetKey])); rebuild(); };
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if (e.key === "ArrowRight") go(idx + 1); else if (e.key === "ArrowLeft") go(idx - 1);
+  else if (e.key === " ") { e.preventDefault(); play(); }
+});
+rebuild();
+</script>
+</body>
+</html>
